@@ -1,8 +1,30 @@
 #!/bin/bash
 set -e
+
+# Ensure miniconda is in PATH (needed on GPUhub where it's not default)
+export PATH="/root/miniconda3/bin:$PATH"
 export HF_HUB_ENABLE_HF_TRANSFER=1
-MODELS_DIR="/app/models"
+
+# Auto-detect install location: /app (Docker) or script directory (native)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -d "/app/models" ]; then
+  MODELS_DIR="/app/models"
+  COMFYUI_DIR="/app"
+else
+  MODELS_DIR="$SCRIPT_DIR/models"
+  COMFYUI_DIR="$SCRIPT_DIR"
+fi
 PORT="${COMFYUI_PORT:-8188}"
+
+# Auto-detect HuggingFace CLI (newer versions use 'hf', older use 'huggingface-cli')
+if command -v hf &>/dev/null; then
+  HF_CLI="hf"
+elif command -v huggingface-cli &>/dev/null; then
+  HF_CLI="huggingface-cli"
+else
+  echo "ERROR: Neither 'hf' nor 'huggingface-cli' found. Install huggingface-hub."
+  exit 1
+fi
 
 echo "============================================"
 echo "  ComfyUI — SkyReels V3 A2V + Chatterbox TTS"
@@ -10,6 +32,7 @@ echo "============================================"
 echo ""
 echo "Checking models (~31GB total)..."
 echo "First launch: downloads run in parallel."
+echo "Using HF CLI: $HF_CLI"
 echo ""
 
 # Create directories
@@ -35,7 +58,7 @@ download_if_missing() {
 download_if_missing \
   "$MODELS_DIR/diffusion_models/SkyReelsV3/Wan21-SkyReelsV3-A2V_fp8_scaled_mixed.safetensors" \
   "[1/5] SkyReels A2V (18GB)" \
-  huggingface-cli download Kijai/WanVideo_comfy_fp8_scaled \
+  $HF_CLI download Kijai/WanVideo_comfy_fp8_scaled \
     SkyReelsV3/Wan21-SkyReelsV3-A2V_fp8_scaled_mixed.safetensors \
     --local-dir "$MODELS_DIR/diffusion_models/" &
 
@@ -43,7 +66,7 @@ download_if_missing \
 download_if_missing \
   "$MODELS_DIR/text_encoders/umt5-xxl-enc-bf16.safetensors" \
   "[2/5] umt5-xxl (11GB)" \
-  huggingface-cli download Kijai/WanVideo_comfy \
+  $HF_CLI download Kijai/WanVideo_comfy \
     umt5-xxl-enc-bf16.safetensors \
     --local-dir "$MODELS_DIR/text_encoders/" &
 
@@ -51,7 +74,7 @@ download_if_missing \
 download_if_missing \
   "$MODELS_DIR/vae/Wan2_1_VAE_bf16.safetensors" \
   "[3/5] VAE (243MB)" \
-  huggingface-cli download Kijai/WanVideo_comfy \
+  $HF_CLI download Kijai/WanVideo_comfy \
     Wan2_1_VAE_bf16.safetensors \
     --local-dir "$MODELS_DIR/vae/" &
 
@@ -66,7 +89,7 @@ download_if_missing \
 download_if_missing \
   "$MODELS_DIR/diffusion_models/MelBandRoformer_fp16.safetensors" \
   "[5/5] MelBandRoFormer (436MB)" \
-  huggingface-cli download Kijai/MelBandRoFormer_comfy \
+  $HF_CLI download Kijai/MelBandRoFormer_comfy \
     MelBandRoformer_fp16.safetensors \
     --local-dir "$MODELS_DIR/diffusion_models/" &
 
@@ -82,4 +105,5 @@ echo "Access ComfyUI at: http://localhost:$PORT"
 echo "Note: Chatterbox models (~2GB) download automatically on first TTS run."
 echo ""
 
+cd "$COMFYUI_DIR"
 python3 main.py --listen 0.0.0.0 --port "$PORT"
