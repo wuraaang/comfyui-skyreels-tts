@@ -42,6 +42,9 @@ RUN cd custom_nodes/ComfyUI-Qwen3-TTS && \
 # Qwen3-TTS needs transformers>=4.57.3 — force after all deps
 RUN pip install --break-system-packages "transformers>=4.57.3"
 
+# SageAttention — required by SkyReels workflow for faster attention
+RUN pip install --break-system-packages sageattention
+
 # Fast model download
 RUN pip install --break-system-packages huggingface-hub hf_transfer
 
