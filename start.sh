@@ -5,16 +5,11 @@ set -e
 export PATH="/root/miniconda3/bin:$PATH"
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
-# Auto-detect install location: /app (Docker) or script directory (native)
+# Detect install location from script directory (works for both Docker and native)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -d "/app/models" ]; then
-  MODELS_DIR="/app/models"
-  COMFYUI_DIR="/app"
-else
-  MODELS_DIR="$SCRIPT_DIR/models"
-  COMFYUI_DIR="$SCRIPT_DIR"
-fi
-PORT="${COMFYUI_PORT:-8188}"
+MODELS_DIR="$SCRIPT_DIR/models"
+COMFYUI_DIR="$SCRIPT_DIR"
+PORT="${COMFYUI_PORT:-6006}"
 
 # Auto-detect HuggingFace CLI (newer versions use 'hf', older use 'huggingface-cli')
 if command -v hf &>/dev/null; then
@@ -30,9 +25,13 @@ echo "============================================"
 echo "  ComfyUI — SkyReels V3 A2V + Chatterbox TTS"
 echo "============================================"
 echo ""
+echo "Install dir : $COMFYUI_DIR"
+echo "Models dir  : $MODELS_DIR"
+echo "Port        : $PORT"
+echo "HF CLI      : $HF_CLI"
+echo ""
 echo "Checking models (~31GB total)..."
 echo "First launch: downloads run in parallel."
-echo "Using HF CLI: $HF_CLI"
 echo ""
 
 # Create directories
@@ -82,8 +81,9 @@ download_if_missing \
 download_if_missing \
   "$MODELS_DIR/clip_vision/clip_vision_h.safetensors" \
   "[4/5] CLIP Vision (1.2GB)" \
-  wget -q --show-progress -O "$MODELS_DIR/clip_vision/clip_vision_h.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors" &
+  $HF_CLI download Comfy-Org/Wan_2.1_ComfyUI_repackaged \
+    split_files/clip_vision/clip_vision_h.safetensors \
+    --local-dir "$MODELS_DIR/clip_vision/" &
 
 # [5/5] MelBandRoFormer (436MB)
 download_if_missing \

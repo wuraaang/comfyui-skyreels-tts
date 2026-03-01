@@ -58,6 +58,6 @@ COPY workflows/ /app/user/default/workflows/
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-ENV COMFYUI_PORT=8188
-EXPOSE 8188 6006
+ENV COMFYUI_PORT=6006
+EXPOSE 6006 8188
 CMD ["/app/start.sh"]

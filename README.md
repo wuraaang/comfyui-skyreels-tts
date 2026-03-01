@@ -10,24 +10,18 @@ Image Docker prête à l'emploi avec **3 workflows** :
 ### Local (Docker + GPU NVIDIA)
 
 ```bash
-docker run --gpus all -p 8188:8188 \
+docker run --gpus all -p 6006:6006 \
   -v ./models:/app/models \
   elcrackito/comfyui-skyreels-tts:latest
 ```
 
-Accès : **http://localhost:8188**
+Accès : **http://localhost:6006** (override avec `COMFYUI_PORT=8188` si besoin)
 
 Le flag `-v ./models:/app/models` persiste les modèles (~31GB) sur le disque local. Au prochain lancement, pas de re-téléchargement.
 
 ### GPUhub
 
-1. Créer une instance avec **RTX 5090** (ou RTX 4090 minimum)
-2. Image Docker : `elcrackito/comfyui-skyreels-tts:latest`
-3. Variable d'environnement : `COMFYUI_PORT=6006`
-4. Port exposé : `6006`
-5. Lancer et attendre ~3 min au premier démarrage
-
-> GPUhub utilise le port 6006 par défaut. La variable `COMFYUI_PORT` configure le port de ComfyUI.
+GPUhub ne supporte pas les images Docker externes. Voir **[GPUHUB.md](GPUHUB.md)** pour l'installation native complète et tous les problèmes connus (GitHub bloqué, PATH cassé, etc.).
 
 ### RunPod
 
