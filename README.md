@@ -1,8 +1,9 @@
-# ComfyUI — SkyReels V3 A2V + Qwen3-TTS
+# ComfyUI — SkyReels V3 A2V + Chatterbox TTS
 
-Image Docker prête à l'emploi avec **2 workflows** :
-1. **Qwen3-TTS Voice Clone** — texte + audio référence → voix clonée
-2. **SkyReels V3 A2V** — image + audio → vidéo avatar parlant
+Image Docker prête à l'emploi avec **3 workflows** :
+1. **Chatterbox Voice Clone** — audio référence + texte → voix clonée
+2. **Chatterbox Long TTS** — texte long + audio référence → voix clonée (split auto par phrases)
+3. **SkyReels V3 Talking Avatar** — image + audio → vidéo avatar parlant
 
 ## Quick Start
 
@@ -16,7 +17,7 @@ docker run --gpus all -p 8188:8188 \
 
 Accès : **http://localhost:8188**
 
-Le flag `-v ./models:/app/models` persiste les modèles (~35GB) sur le disque local. Au prochain lancement, pas de re-téléchargement.
+Le flag `-v ./models:/app/models` persiste les modèles (~31GB) sur le disque local. Au prochain lancement, pas de re-téléchargement.
 
 ### GPUhub
 
@@ -39,23 +40,33 @@ Le flag `-v ./models:/app/models` persiste les modèles (~35GB) sur le disque lo
 
 ## Workflows inclus
 
-### 1. Qwen3-TTS Voice Clone
+### 1. Chatterbox Voice Clone
 
-**Nodes :** `Qwen3Loader` → `LoadAudio` → `Qwen3VoiceClone` → `SaveAudio`
+**Nodes :** `LoadAudio` → `FL_ChatterboxTTS` → `PreviewAudio` / `SaveAudio`
 
 | Input | Description |
 |-------|-------------|
-| `reference.wav` | Audio de référence (la voix à cloner, 5-30s) |
-| `ref_text` | Transcription exacte de l'audio de référence |
+| `reference.wav` | Audio de référence (la voix à cloner, 5-15s, propre) |
 | `text` | Le texte à faire dire avec la voix clonée |
+| `exaggeration` | Intensité émotionnelle (0.25 = monotone, 0.5 = naturel, 1.0+ = expressif) |
+| `cfg_weight` | Contrôle du rythme (bas = rapide, haut = contrôlé) |
+| `temperature` | Randomness (0.5 = stable, 0.8 = naturel, 1.5+ = imprévisible) |
 
-**VRAM :** ~8-10 GB
+**VRAM :** ~4-6 GB
 
-### 2. SkyReels V3 A2V (Audio-to-Video)
+### 2. Chatterbox Long TTS
+
+**Nodes :** `LoadAudio` → `FL_ChatterboxLongTTS` → `PreviewAudio` / `SaveAudio`
+
+Même principe que Voice Clone, mais pour les textes longs. Le texte est automatiquement découpé en chunks aux limites de phrases (`max_chars_per_chunk = 200` par défaut), chaque chunk est généré séparément puis concaténé.
+
+**VRAM :** ~4-6 GB
+
+### 3. SkyReels V3 Talking Avatar
+
+Pipeline complète : image + audio → vidéo avatar parlant. Utilise MelBandRoFormer pour isoler les voix, wav2vec2 pour les embeddings audio, puis SkyReels V3 A2V pour générer la vidéo.
 
 **VRAM :** ~20-24 GB (fp8)
-
-> ⚠️ Workflow JSON en attente — sera ajouté prochainement.
 
 ## Specs techniques
 
@@ -68,7 +79,7 @@ Le flag `-v ./models:/app/models` persiste les modèles (~35GB) sur le disque lo
 | GPU min | RTX 4090 (24GB) |
 | GPU recommandé | RTX 5090 (32GB) |
 
-### Modèles téléchargés au démarrage (~35 GB)
+### Modèles téléchargés au démarrage (~31 GB)
 
 | Modèle | Taille |
 |--------|--------|
@@ -77,8 +88,8 @@ Le flag `-v ./models:/app/models` persiste les modèles (~35GB) sur le disque lo
 | clip_vision_h | 1.2 GB |
 | MelBandRoformer_fp16 | 436 MB |
 | Wan2_1_VAE_bf16 | 243 MB |
-| Qwen3-TTS-1.7B-Base | ~3.5 GB |
-| Qwen3-TTS-Tokenizer | ~500 MB |
+
+> Les modèles Chatterbox (~2 GB) se téléchargent automatiquement au premier usage du node TTS.
 
 ### Custom nodes installés
 
@@ -86,21 +97,23 @@ Le flag `-v ./models:/app/models` persiste les modèles (~35GB) sur le disque lo
 - [ComfyUI-MelBandRoFormer](https://github.com/kijai/ComfyUI-MelBandRoFormer)
 - [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite)
 - [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes)
-- [ComfyUI-Qwen3-TTS](https://github.com/DarioFT/ComfyUI-Qwen3-TTS)
+- [ComfyUI_Fill-ChatterBox](https://github.com/filliptm/ComfyUI_Fill-ChatterBox) + custom `FL_ChatterboxLongTTS` node
 
 ## Temps de démarrage
+
+Les 5 modèles sont téléchargés **en parallèle** — le temps est limité par le plus gros fichier (18 GB) au lieu de la somme de tous.
 
 | Étape | Temps |
 |-------|-------|
 | Pull image (~5 GB) | ~30s |
-| Download modèles (~35 GB) | ~2-3 min |
+| Download modèles (~31 GB, parallèle) | ~2-3 min |
 | Startup ComfyUI | ~15s |
 | **Premier lancement** | **~3-4 min** |
 | **Relancement (modèles cachés)** | **~30s** |
 
 ## Troubleshooting
 
-**"CUDA out of memory"** → Les 2 workflows ne peuvent pas tourner en même temps. Ferme l'un avant de lancer l'autre, ou redémarre ComfyUI entre les deux.
+**"CUDA out of memory"** → Les workflows vidéo et TTS ne peuvent pas tourner en même temps sur un GPU 24 GB. Ferme l'un avant de lancer l'autre, ou redémarre ComfyUI entre les deux.
 
 **Modèles re-téléchargés à chaque fois** → Monte un volume persistant sur `/app/models` (voir instructions ci-dessus).
 

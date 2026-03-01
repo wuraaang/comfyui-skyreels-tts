@@ -25,9 +25,9 @@ RUN cd custom_nodes && \
     git clone https://github.com/kijai/ComfyUI-MelBandRoFormer && \
     git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite && \
     git clone https://github.com/kijai/ComfyUI-KJNodes && \
-    git clone https://github.com/DarioFT/ComfyUI-Qwen3-TTS
+    git clone https://github.com/filliptm/ComfyUI_Fill-ChatterBox
 
-# Install deps for each custom node (order matters — Qwen3-TTS last for transformers version)
+# Install deps for each custom node
 RUN cd custom_nodes/ComfyUI-WanVideoWrapper && \
     pip install --break-system-packages -r requirements.txt
 RUN cd custom_nodes/ComfyUI-MelBandRoFormer && \
@@ -36,11 +36,15 @@ RUN cd custom_nodes/ComfyUI-VideoHelperSuite && \
     pip install --break-system-packages -r requirements.txt
 RUN cd custom_nodes/ComfyUI-KJNodes && \
     pip install --break-system-packages -r requirements.txt
-RUN cd custom_nodes/ComfyUI-Qwen3-TTS && \
+RUN cd custom_nodes/ComfyUI_Fill-ChatterBox && \
     pip install --break-system-packages -r requirements.txt
 
-# Qwen3-TTS needs transformers>=4.57.3 — force after all deps
-RUN pip install --break-system-packages "transformers>=4.57.3"
+# Custom Long TTS node (not in upstream repo)
+COPY chatterbox_long_node.py /app/custom_nodes/ComfyUI_Fill-ChatterBox/chatterbox_long_node.py
+# Patch __init__.py to register the long node
+RUN cd custom_nodes/ComfyUI_Fill-ChatterBox && \
+    sed -i '/^NODE_CLASS_MAPPINGS = {}/i from .chatterbox_long_node import NODE_CLASS_MAPPINGS as LONG_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS as LONG_DISPLAY_NAME_MAPPINGS' __init__.py && \
+    sed -i '/NODE_DISPLAY_NAME_MAPPINGS.update(DIALOG_DISPLAY_NAME_MAPPINGS)/a NODE_CLASS_MAPPINGS.update(LONG_CLASS_MAPPINGS)\nNODE_DISPLAY_NAME_MAPPINGS.update(LONG_DISPLAY_NAME_MAPPINGS)' __init__.py
 
 # SageAttention — required by SkyReels workflow for faster attention
 RUN pip install --break-system-packages sageattention
