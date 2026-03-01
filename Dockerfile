@@ -1,0 +1,55 @@
+FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
+ENV PYTHONUNBUFFERED=1
+
+# System deps — Ubuntu 24.04 ships with Python 3.12
+RUN apt-get update && apt-get install -y \
+    git python3 python3-pip python3-venv ffmpeg wget curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyTorch 2.7 + CUDA 12.8
+RUN pip install --break-system-packages \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu128
+
+# ComfyUI
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git /app
+WORKDIR /app
+RUN pip install --break-system-packages -r requirements.txt
+
+# Custom nodes
+RUN cd custom_nodes && \
+    git clone https://github.com/kijai/ComfyUI-WanVideoWrapper && \
+    git clone https://github.com/kijai/ComfyUI-MelBandRoFormer && \
+    git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite && \
+    git clone https://github.com/kijai/ComfyUI-KJNodes && \
+    git clone https://github.com/DarioFT/ComfyUI-Qwen3-TTS
+
+# Install deps for each custom node (order matters — Qwen3-TTS last for transformers version)
+RUN cd custom_nodes/ComfyUI-WanVideoWrapper && \
+    pip install --break-system-packages -r requirements.txt
+RUN cd custom_nodes/ComfyUI-MelBandRoFormer && \
+    pip install --break-system-packages -r requirements.txt
+RUN cd custom_nodes/ComfyUI-VideoHelperSuite && \
+    pip install --break-system-packages -r requirements.txt
+RUN cd custom_nodes/ComfyUI-KJNodes && \
+    pip install --break-system-packages -r requirements.txt
+RUN cd custom_nodes/ComfyUI-Qwen3-TTS && \
+    pip install --break-system-packages -r requirements.txt
+
+# Qwen3-TTS needs transformers>=4.57.3 — force after all deps
+RUN pip install --break-system-packages "transformers>=4.57.3"
+
+# Fast model download
+RUN pip install --break-system-packages huggingface-hub hf_transfer
+
+# Workflows + startup script
+COPY workflows/ /app/user/default/workflows/
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+ENV COMFYUI_PORT=8188
+EXPOSE 8188 6006
+CMD ["/app/start.sh"]
