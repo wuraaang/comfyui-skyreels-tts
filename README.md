@@ -1,91 +1,132 @@
-# ComfyUI — SkyReels V3 A2V + Chatterbox TTS
+# ComfyUI — SkyReels V3 + Chatterbox TTS (GPUhub Image)
 
-Image Docker prête à l'emploi avec **3 workflows** :
-1. **Chatterbox Voice Clone** — audio référence + texte → voix clonée
-2. **Chatterbox Long TTS** — texte long + audio référence → voix clonée (split auto par phrases)
-3. **SkyReels V3 Talking Avatar** — image + audio → vidéo avatar parlant
+Pre-configured GPUhub image with **3 ready-to-use workflows** for AI voice cloning and talking avatar video generation.
+
+## What's Included
+
+- **Chatterbox Voice Clone** — reference audio + text → cloned voice (~4-6 GB VRAM)
+- **Chatterbox Long TTS** — long text + reference audio → cloned voice with auto-chunking (~4-6 GB VRAM)
+- **SkyReels V3 Talking Avatar** — image + audio → talking avatar video (~20-24 GB VRAM)
+- 5 custom nodes pre-installed
+- Smart Start: ComfyUI UI accessible in under 3 minutes
 
 ## Quick Start
 
-### Local (Docker + GPU NVIDIA)
+1. Create a GPUhub instance using this image (RTX 4090+ recommended, RTX 5090 ideal)
+2. Run: `bash /opt/ComfyUI/start.sh`
+3. Open ComfyUI at `https://<your-gpuhub-url>:8443` (port 6006)
+4. Load a workflow from the workflow browser and start generating
 
-```bash
-docker run --gpus all -p 6006:6006 \
-  -v ./models:/app/models \
-  elcrackito/comfyui-skyreels-tts:latest
-```
+## Startup Timing
 
-Accès : **http://localhost:6006** (override avec `COMFYUI_PORT=8188` si besoin)
+This image uses **Smart Start** — ComfyUI launches immediately while large models download in the background.
 
-Le flag `-v ./models:/app/models` persiste les modèles (~31GB) sur le disque local. Au prochain lancement, pas de re-téléchargement.
+### First launch (no models cached)
 
-### GPUhub
+| Step | Time | What happens |
+|------|------|-------------|
+| Phase 1: small models (1.9 GB) | ~2 min | VAE, CLIP Vision, MelBandRoFormer download |
+| ComfyUI starts | ~30s | UI is accessible, you can explore workflows |
+| TTS ready | ~5 min | Chatterbox models (~2 GB) auto-download on first TTS use |
+| Phase 2: large models (29 GB) | ~30 min | umt5-xxl (11 GB) + SkyReels A2V (18 GB) download in background |
+| **Video generation ready** | **~35 min** | All models downloaded, SkyReels workflow functional |
 
-GPUhub ne supporte pas les images Docker externes. Voir **[GPUHUB.md](GPUHUB.md)** pour l'installation native complète et tous les problèmes connus (GitHub bloqué, PATH cassé, etc.).
+### Why does it take 30 min?
 
-### RunPod
+The 5 AI models total **31 GB**. GPUhub Singapore instances have a network speed of **~15 MB/s** — this is a hardware limitation of the provider, not a software issue. We tested every optimization (hf_xet, aria2c multi-connection, Cloudflare CDN, HuggingFace mirrors) and all hit the same ~15 MB/s cap.
 
-1. **Create Pod** → Community Cloud ou Secure Cloud
-2. GPU : **A40 48GB** ou **RTX 4090 24GB** minimum
-3. Container Image : `elcrackito/comfyui-skyreels-tts:latest`
-4. Expose HTTP Ports : `8188`
-5. (Recommandé) Attacher un **Network Volume** monté sur `/app/models` pour persister les modèles
-6. Deploy → attendre ~3 min au premier démarrage
+**Smart Start** solves this by letting you use ComfyUI (TTS workflows) while the heavy video models download in the background. You're not staring at a blank screen for 30 minutes.
 
-## Workflows inclus
+### Second launch (models cached on autodl-fs)
+
+| Step | Time |
+|------|------|
+| ComfyUI starts | ~30s |
+| **Everything ready** | **~30s** |
+
+Models are saved to **autodl-fs** (persistent storage that survives shutdown and release). Once downloaded, they're cached forever on your account.
+
+## Workflows
 
 ### 1. Chatterbox Voice Clone
 
-**Nodes :** `LoadAudio` → `FL_ChatterboxTTS` → `PreviewAudio` / `SaveAudio`
+Clone any voice from a short reference audio clip.
 
-| Input | Description |
-|-------|-------------|
-| `reference.wav` | Audio de référence (la voix à cloner, 5-15s, propre) |
-| `text` | Le texte à faire dire avec la voix clonée |
-| `exaggeration` | Intensité émotionnelle (0.25 = monotone, 0.5 = naturel, 1.0+ = expressif) |
-| `cfg_weight` | Contrôle du rythme (bas = rapide, haut = contrôlé) |
-| `temperature` | Randomness (0.5 = stable, 0.8 = naturel, 1.5+ = imprévisible) |
+| Parameter | Description |
+|-----------|-------------|
+| `reference.wav` | Reference audio (5-15s, clean voice) |
+| `text` | Text to speak in the cloned voice |
+| `exaggeration` | Emotional intensity (0.25 = flat, 0.5 = natural, 1.0+ = expressive) |
+| `cfg_weight` | Pace control (low = fast, high = controlled) |
+| `temperature` | Randomness (0.5 = stable, 0.8 = natural, 1.5+ = wild) |
 
-**VRAM :** ~4-6 GB
+**VRAM:** ~4-6 GB
 
 ### 2. Chatterbox Long TTS
 
-**Nodes :** `LoadAudio` → `FL_ChatterboxLongTTS` → `PreviewAudio` / `SaveAudio`
+Same as Voice Clone but for long texts. Text is automatically split into chunks at sentence boundaries (`max_chars_per_chunk = 200`), each chunk is generated separately and concatenated.
 
-Même principe que Voice Clone, mais pour les textes longs. Le texte est automatiquement découpé en chunks aux limites de phrases (`max_chars_per_chunk = 200` par défaut), chaque chunk est généré séparément puis concaténé.
-
-**VRAM :** ~4-6 GB
+**VRAM:** ~4-6 GB
 
 ### 3. SkyReels V3 Talking Avatar
 
-Pipeline complète : image + audio → vidéo avatar parlant. Utilise MelBandRoFormer pour isoler les voix, wav2vec2 pour les embeddings audio, puis SkyReels V3 A2V pour générer la vidéo.
+Full pipeline: image + audio → talking avatar video. Uses MelBandRoFormer for voice isolation, wav2vec2 for audio embeddings, then SkyReels V3 A2V for video generation.
 
-**VRAM :** ~20-24 GB (fp8)
+**VRAM:** ~20-24 GB (fp8)
 
-## Specs techniques
+> **Note:** TTS and video workflows cannot run simultaneously on a 24 GB GPU. Run one at a time, or use an RTX 5090 (32 GB).
 
-| Composant | Version |
+## Models (31 GB total)
+
+All models are downloaded automatically by `start.sh` from HuggingFace.
+
+| Model | Size | Source | Used by |
+|-------|------|--------|---------|
+| SkyReels V3 A2V (fp8) | 18 GB | Kijai/WanVideo_comfy_fp8_scaled | Video generation |
+| umt5-xxl text encoder | 11 GB | Kijai/WanVideo_comfy | Video generation |
+| CLIP Vision H | 1.2 GB | Comfy-Org/Wan_2.1_ComfyUI_repackaged | Video generation |
+| MelBandRoFormer (fp16) | 436 MB | Kijai/MelBandRoFormer_comfy | Audio separation |
+| Wan2.1 VAE (bf16) | 243 MB | Kijai/WanVideo_comfy | Video generation |
+| Chatterbox TTS | ~2 GB | Auto-downloaded on first use | TTS voice clone |
+
+## How It Works
+
+### Storage architecture (GPUhub)
+
+```
+/opt/ComfyUI/                    ← system disk (30 GB, saved in image)
+├── main.py, start.sh
+├── custom_nodes/                 ← 5 nodes pre-installed
+├── models → /root/autodl-fs/models/   ← symlink to persistent storage
+└── user/default/workflows/       ← 3 workflows ready to use
+
+/root/autodl-fs/models/          ← persistent storage (survives shutdown/release)
+├── diffusion_models/SkyReelsV3/  ← SkyReels A2V (18 GB)
+├── diffusion_models/             ← MelBandRoFormer (436 MB)
+├── text_encoders/                ← umt5-xxl (11 GB)
+├── vae/                          ← Wan2.1 VAE (243 MB)
+└── clip_vision/                  ← CLIP Vision H (1.2 GB)
+```
+
+### Smart Start (Phase 1 / Phase 2)
+
+1. **Phase 1** (blocking, ~2 min): Downloads 3 small models (1.9 GB total)
+2. **ComfyUI launches** — UI is accessible
+3. **Phase 2** (background): Downloads 2 large models (29 GB) while you use ComfyUI
+4. Progress: `tail -f /tmp/model-download.log`
+
+## Tech Specs
+
+| Component | Version |
 |-----------|---------|
 | CUDA | 12.8 |
-| PyTorch | 2.7.0+cu128 |
+| PyTorch | 2.8.0+cu128 |
 | Python | 3.12 |
 | ComfyUI | latest |
-| GPU min | RTX 4090 (24GB) |
-| GPU recommandé | RTX 5090 (32GB) |
+| GPU minimum | RTX 4090 (24 GB) |
+| GPU recommended | RTX 5090 (32 GB) |
 
-### Modèles téléchargés au démarrage (~31 GB)
-
-| Modèle | Taille |
-|--------|--------|
-| SkyReels A2V fp8 | 18 GB |
-| umt5-xxl-enc-bf16 | 11 GB |
-| clip_vision_h | 1.2 GB |
-| MelBandRoformer_fp16 | 436 MB |
-| Wan2_1_VAE_bf16 | 243 MB |
-
-> Les modèles Chatterbox (~2 GB) se téléchargent automatiquement au premier usage du node TTS.
-
-### Custom nodes installés
+### Custom Nodes
 
 - [ComfyUI-WanVideoWrapper](https://github.com/kijai/ComfyUI-WanVideoWrapper)
 - [ComfyUI-MelBandRoFormer](https://github.com/kijai/ComfyUI-MelBandRoFormer)
@@ -93,22 +134,26 @@ Pipeline complète : image + audio → vidéo avatar parlant. Utilise MelBandRoF
 - [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes)
 - [ComfyUI_Fill-ChatterBox](https://github.com/filliptm/ComfyUI_Fill-ChatterBox) + custom `FL_ChatterboxLongTTS` node
 
-## Temps de démarrage
-
-Les 5 modèles sont téléchargés **en parallèle** — le temps est limité par le plus gros fichier (18 GB) au lieu de la somme de tous.
-
-| Étape | Temps |
-|-------|-------|
-| Pull image (~5 GB) | ~30s |
-| Download modèles (~31 GB, parallèle) | ~2-3 min |
-| Startup ComfyUI | ~15s |
-| **Premier lancement** | **~3-4 min** |
-| **Relancement (modèles cachés)** | **~30s** |
-
 ## Troubleshooting
 
-**"CUDA out of memory"** → Les workflows vidéo et TTS ne peuvent pas tourner en même temps sur un GPU 24 GB. Ferme l'un avant de lancer l'autre, ou redémarre ComfyUI entre les deux.
+**"CUDA out of memory"** — TTS and video workflows can't run simultaneously on 24 GB GPUs. Close one before launching the other, or restart ComfyUI between runs.
 
-**Modèles re-téléchargés à chaque fois** → Monte un volume persistant sur `/app/models` (voir instructions ci-dessus).
+**Models re-downloading every launch** — Models should persist on `autodl-fs`. If they keep re-downloading, check that `/root/autodl-fs` exists and is writable: `ls -la /root/autodl-fs/models/`
 
-**Node rouge dans ComfyUI** → Un custom node n'a pas été chargé. Vérifier les logs au démarrage.
+**Red nodes in ComfyUI** — A custom node failed to load. Check startup logs: `tail -n 50 /tmp/comfyui-start.log`
+
+**Video workflow not working** — Phase 2 models may still be downloading. Check progress: `tail -f /tmp/model-download.log`
+
+**Port not accessible** — GPUhub exposes port 6006, not 8188. The start script uses 6006 by default.
+
+## Building the Image from Scratch
+
+If you want to rebuild this image on a fresh GPUhub instance, see [GPUHUB.md](GPUHUB.md) for the full setup guide including known issues and workarounds.
+
+```bash
+# Quick version (if GitHub is accessible):
+export PATH="/root/miniconda3/bin:$PATH"
+curl -sL https://raw.githubusercontent.com/wuraaang/comfyui-skyreels-tts/master/setup-gpuhub.sh | bash
+bash /opt/ComfyUI/start.sh
+# Then: More > Save Image in GPUhub console
+```

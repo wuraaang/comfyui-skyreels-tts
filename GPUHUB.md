@@ -107,8 +107,8 @@ tar xzf gpuhub-pack.tar.gz
 unzip -q ComfyUI.zip && mv ComfyUI-master /opt/ComfyUI
 
 # 5. Symlink models vers data disk
-mkdir -p /root/autodl-tmp/comfyui-models/{diffusion_models,text_encoders,vae,clip_vision}
-ln -sfn /root/autodl-tmp/comfyui-models /opt/ComfyUI/models
+mkdir -p /root/autodl-fs/models/{diffusion_models/SkyReelsV3,text_encoders,vae,clip_vision}
+ln -sfn /root/autodl-fs/models /opt/ComfyUI/models
 
 # 6. Custom nodes
 cd /opt/ComfyUI/custom_nodes
@@ -124,7 +124,7 @@ pip install -r requirements.txt --timeout 300
 for node in custom_nodes/*/; do
   [ -f "$node/requirements.txt" ] && pip install -r "$node/requirements.txt" --timeout 300
 done
-pip install sageattention huggingface-hub hf_transfer --timeout 300
+pip install sageattention huggingface-hub hf_xet --timeout 300
 
 # 8. Patch ChatterBox
 cp /root/autodl-tmp/chatterbox_long_node.py custom_nodes/ComfyUI_Fill-ChatterBox/
@@ -164,14 +164,14 @@ Once everything works, save as custom image in the GPUhub console:
 3. Wait ~1-2h (disk compression)
 4. Future instances use this image → only `start.sh` needed (model downloads)
 
-**Important**: Only the system disk (`/`) is captured. Models in `/root/autodl-tmp/` are NOT saved — that's by design. The `start.sh` script re-downloads them each session (with skip-if-cached).
+**Important**: Only the system disk (`/`) is captured. Models on `autodl-fs` are persistent (survive shutdown/release) but not part of the image. The `start.sh` script downloads them on first launch, then they stay cached on your account forever.
 
 ### Structure des fichiers
 ```
 /opt/ComfyUI/                          ← system disk (captured in image)
 ├── main.py
 ├── start.sh
-├── models → /root/autodl-tmp/comfyui-models/  ← symlink to data disk
+├── models → /root/autodl-fs/models/   ← symlink to persistent storage
 ├── custom_nodes/
 │   ├── ComfyUI-WanVideoWrapper/
 │   ├── ComfyUI-MelBandRoFormer/
@@ -183,8 +183,9 @@ Once everything works, save as custom image in the GPUhub console:
     ├── chatterbox-long-tts.json
     └── skyreels-v3-talking-avatar.json
 
-/root/autodl-tmp/comfyui-models/       ← data disk (NOT in image, downloaded by start.sh)
-├── diffusion_models/                  # SkyReels A2V (18GB) + MelBandRoFormer (436MB)
+/root/autodl-fs/models/                ← persistent storage (survives shutdown/release)
+├── diffusion_models/SkyReelsV3/       # SkyReels A2V (18GB)
+├── diffusion_models/                  # MelBandRoFormer (436MB)
 ├── text_encoders/                     # umt5-xxl (11GB)
 ├── vae/                               # Wan2_1_VAE (243MB)
 └── clip_vision/                       # clip_vision_h (1.2GB)

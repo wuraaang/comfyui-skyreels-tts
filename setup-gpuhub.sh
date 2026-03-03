@@ -16,7 +16,12 @@ export PIP_CACHE_DIR="/root/autodl-tmp/pip-cache"
 mkdir -p "$PIP_CACHE_DIR"
 
 INSTALL_DIR="/opt/ComfyUI"
-MODELS_DIR="/root/autodl-tmp/comfyui-models"
+# Prefer autodl-fs (persistent across sessions) over autodl-tmp (wiped on release)
+if [ -d "/root/autodl-fs" ]; then
+  MODELS_DIR="/root/autodl-fs/models"
+else
+  MODELS_DIR="/root/autodl-tmp/comfyui-models"
+fi
 REPO_RAW="https://raw.githubusercontent.com/wuraaang/comfyui-skyreels-tts/master"
 
 # GitHub is blocked/throttled on GPUhub Singapore.
@@ -121,8 +126,8 @@ for node in ComfyUI-WanVideoWrapper ComfyUI-MelBandRoFormer ComfyUI-VideoHelperS
 done
 
 # 7. Extra deps + custom long node
-echo "[7/8] SageAttention + HF transfer + ChatterBox patch..."
-pip install sageattention huggingface-hub hf_transfer --timeout 300 2>&1 | tail -1
+echo "[7/8] SageAttention + HF xet + ChatterBox patch..."
+pip install sageattention huggingface-hub hf_xet --timeout 300 2>&1 | tail -1
 
 curl -sfL "$REPO_RAW/chatterbox_long_node.py" -o "$NODES_DIR/ComfyUI_Fill-ChatterBox/chatterbox_long_node.py"
 
