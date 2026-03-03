@@ -1,76 +1,78 @@
-# Déploiement sur GPUhub
+# Building the Image from Scratch (GPUhub)
 
-## Problèmes connus
+This guide is for **rebuilding** the image on a fresh GPUhub instance. If you're just using an existing image, see [README.md](README.md).
 
-### 1. GitHub est bloqué/throttled
-**Symptôme :** `git clone` et `wget` vers github.com échouent (timeout, `fetch-pack: invalid index-pack output`, `curl 92 HTTP/2 stream was not closed cleanly`).
+## Known Issues
 
-**Cause :** Le réseau GPUhub (Singapour) throttle ou bloque les connexions vers GitHub. C'est un problème du provider, pas du script.
+### 1. GitHub is blocked/throttled
+**Symptom:** `git clone` and `wget` to github.com fail (timeout, `fetch-pack: invalid index-pack output`, `curl 92 HTTP/2 stream was not closed cleanly`).
 
-**Impact :** Le script `setup-gpuhub.sh` doit télécharger 6 repos GitHub (ComfyUI + 5 custom nodes). Si GitHub est bloqué, ces downloads échouent.
+**Cause:** GPUhub's Singapore network throttles or blocks connections to GitHub. This is a provider limitation, not a script issue.
 
-**Solution :** Utiliser le **fallback SCP** (voir ci-dessous). Télécharger les repos depuis ta machine locale (où GitHub marche) et les uploader via `scp`.
+**Impact:** The `setup-gpuhub.sh` script needs to download 6 GitHub repos (ComfyUI + 5 custom nodes). If GitHub is blocked, these downloads fail.
 
-### 2. PATH cassé en mode non-interactif
-**Symptôme :** `python3: command not found`, `pip: command not found`, `hf: command not found`
+**Solution:** Use the **SCP fallback** (see below). Download repos from your local machine (where GitHub works) and upload via `scp`.
 
-**Cause :** Sur GPUhub, Python est installé dans `/root/miniconda3/bin/` mais ce chemin n'est PAS dans le `$PATH` quand tu exécutes des commandes via SSH non-interactif (`ssh host "command"`). Il est seulement chargé en mode interactif (via `.bashrc`).
+### 2. PATH not set in non-interactive mode
+**Symptom:** `python3: command not found`, `pip: command not found`, `hf: command not found`
 
-**Solution :** Toujours ajouter en début de script ou commande :
+**Cause:** On GPUhub, Python is installed in `/root/miniconda3/bin/` but this path is NOT in `$PATH` when running commands via non-interactive SSH (`ssh host "command"`). It's only loaded in interactive mode (via `.bashrc`).
+
+**Solution:** Always add at the beginning of scripts or commands:
 ```bash
 export PATH="/root/miniconda3/bin:$PATH"
 ```
-Les scripts `setup-gpuhub.sh` et `start.sh` le font automatiquement.
+Both `setup-gpuhub.sh` and `start.sh` do this automatically.
 
-### 3. `huggingface-cli` renommé en `hf`
-**Symptôme :** `huggingface-cli: command not found`
+### 3. `huggingface-cli` renamed to `hf`
+**Symptom:** `huggingface-cli: command not found`
 
-**Cause :** La version récente de `huggingface-hub` (>= 0.25) a renommé le CLI de `huggingface-cli` à `hf`.
+**Cause:** Recent versions of `huggingface-hub` (>= 0.25) renamed the CLI from `huggingface-cli` to `hf`.
 
-**Solution :** Le `start.sh` auto-détecte `hf` ou `huggingface-cli` et utilise celui qui est disponible.
+**Solution:** `start.sh` auto-detects `hf` or `huggingface-cli` and uses whichever is available.
 
-### 4. Port 6006 (pas 8188)
-**Symptôme :** ComfyUI démarre mais n'est pas accessible depuis l'extérieur.
+### 4. Port 6006 (not 8188)
+**Symptom:** ComfyUI starts but is not accessible from outside.
 
-**Cause :** GPUhub expose le port **6006** pour les services web. Le port 8188 (défaut ComfyUI) n'est pas routé.
+**Cause:** GPUhub exposes port **6006** for web services. Port 8188 (ComfyUI default) is not routed.
 
-**Solution :** Le `start.sh` utilise le port **6006 par défaut**. Overridable avec `COMFYUI_PORT=8188` si besoin (Docker, RunPod, etc.).
+**Solution:** `start.sh` uses port **6006 by default**. Override with `COMFYUI_PORT=8188` if needed.
 
-### 5. Docker-in-Docker impossible
-**Symptôme :** `Failed to create bridge docker0: operation not permitted`
+### 5. Docker-in-Docker is impossible
+**Symptom:** `Failed to create bridge docker0: operation not permitted`
 
-**Cause :** Les pods GPUhub tournent déjà dans des containers Docker. Lancer un daemon Docker à l'intérieur nécessite des permissions réseau que le pod n'a pas.
+**Cause:** GPUhub pods already run inside Docker containers. Running a Docker daemon inside requires network permissions the pod doesn't have.
 
-**Solution :** Ne PAS essayer d'installer/utiliser Docker sur GPUhub. Utiliser l'install native (`setup-gpuhub.sh`) puis "Save Image" dans l'interface GPUhub.
+**Solution:** Do NOT try to install/use Docker on GPUhub. Use the native install (`setup-gpuhub.sh`) then "Save Image" in the GPUhub console.
 
-### 6. `/app` peut exister
-**Symptôme :** Les modèles se téléchargent dans `/app/models/` au lieu du bon répertoire.
+### 6. `/app` may exist
+**Symptom:** Models download to `/app/models/` instead of the correct directory.
 
-**Cause :** Certaines config GPUhub créent un dossier `/app`. Si le `start.sh` auto-détecte `/app/models`, il utilise le mauvais chemin.
+**Cause:** Some GPUhub configs create an `/app` folder. If `start.sh` auto-detects `/app/models`, it uses the wrong path.
 
-**Solution :** Le `start.sh` utilise maintenant `$SCRIPT_DIR/models` (relatif au script) et ne fait plus d'auto-detect `/app`.
+**Solution:** `start.sh` now uses `$SCRIPT_DIR/models` (relative to script) and no longer auto-detects `/app`.
 
-### 7. HuggingFace fonctionne, GitHub non
-**Symptôme :** Les modèles se téléchargent (~60 MB/s depuis HuggingFace) mais les repos GitHub échouent.
+### 7. HuggingFace works, GitHub doesn't
+**Symptom:** Models download fine (~15 MB/s from HuggingFace) but GitHub repos fail.
 
-**Info utile :** PyPI fonctionne aussi. Seul GitHub est problématique.
+**Note:** PyPI also works. Only GitHub is problematic.
 
 ---
 
-## Méthode d'installation
+## Installation Methods
 
-### Option A : GitHub accessible (rare sur GPUhub)
+### Option A: Direct install (if GitHub is accessible)
 ```bash
 export PATH="/root/miniconda3/bin:$PATH"
 curl -sL https://raw.githubusercontent.com/wuraaang/comfyui-skyreels-tts/master/setup-gpuhub.sh | bash
 cd /opt/ComfyUI && bash start.sh
 ```
 
-### Option B : Fallback SCP (quand GitHub est bloqué)
+### Option B: SCP fallback (when GitHub is blocked)
 
-**Sur ta machine locale** (où GitHub marche) :
+**On your local machine** (where GitHub works):
 ```bash
-# 1. Télécharger tous les repos en zip
+# 1. Download all repos as zip
 cd /tmp && mkdir -p gpuhub-pack && cd gpuhub-pack
 
 # ComfyUI
@@ -83,30 +85,30 @@ for repo in kijai/ComfyUI-WanVideoWrapper kijai/ComfyUI-MelBandRoFormer Kosinkad
   curl -sL "https://codeload.github.com/$repo/zip/refs/heads/master" -o "$name.zip"
 done
 
-# Fichiers du repo
+# Repo files
 curl -sL https://raw.githubusercontent.com/wuraaang/comfyui-skyreels-tts/master/chatterbox_long_node.py -o chatterbox_long_node.py
 curl -sL https://raw.githubusercontent.com/wuraaang/comfyui-skyreels-tts/master/start.sh -o start.sh
 for wf in chatterbox-long-tts.json chatterbox-voice-clone.json skyreels-v3-talking-avatar.json; do
   curl -sL "https://raw.githubusercontent.com/wuraaang/comfyui-skyreels-tts/master/workflows/$wf" -o "$wf"
 done
 
-# 2. Packager en tarball
+# 2. Package as tarball
 tar czf /tmp/gpuhub-pack.tar.gz -C /tmp/gpuhub-pack .
 
-# 3. Uploader sur le pod (remplacer PORT et PASSWORD)
+# 3. Upload to the pod (replace PORT and PASSWORD)
 sshpass -p 'PASSWORD' scp -P PORT /tmp/gpuhub-pack.tar.gz root@connect.singapore-b.gpuhub.com:/root/autodl-tmp/
 ```
 
-**Sur le pod GPUhub** (via SSH) :
+**On the GPUhub pod** (via SSH):
 ```bash
 export PATH="/root/miniconda3/bin:$PATH"
 
-# 4. Décompresser sur le DISQUE SYSTÈME (/opt, pas /root/autodl-tmp)
+# 4. Extract to SYSTEM DISK (/opt, not /root/autodl-tmp)
 cd /root/autodl-tmp
 tar xzf gpuhub-pack.tar.gz
 unzip -q ComfyUI.zip && mv ComfyUI-master /opt/ComfyUI
 
-# 5. Symlink models vers data disk
+# 5. Symlink models to persistent storage
 mkdir -p /root/autodl-fs/models/{diffusion_models/SkyReelsV3,text_encoders,vae,clip_vision}
 ln -sfn /root/autodl-fs/models /opt/ComfyUI/models
 
@@ -118,7 +120,7 @@ for z in /root/autodl-tmp/ComfyUI-*.zip /root/autodl-tmp/ComfyUI_*.zip; do
   mv "${name}-main" "$name" 2>/dev/null || mv "${name}-master" "$name" 2>/dev/null || true
 done
 
-# 7. Install deps
+# 7. Install dependencies
 cd /opt/ComfyUI
 pip install -r requirements.txt --timeout 300
 for node in custom_nodes/*/; do
@@ -137,36 +139,36 @@ mkdir -p user/default/workflows
 cp /root/autodl-tmp/*.json user/default/workflows/
 cp /root/autodl-tmp/start.sh . && chmod +x start.sh
 
-# 10. Lancer
+# 10. Launch
 bash start.sh
 ```
 
-### Option C : Claude Code (automatisé)
-Si tu utilises Claude Code pour déployer :
-1. Lire ce fichier GPUHUB.md en entier avant de commencer
-2. Utiliser l'Option B (SCP) systématiquement — ne pas tenter git clone
-3. Les commandes SSH doivent TOUJOURS commencer par `export PATH="/root/miniconda3/bin:$PATH"`
-4. Le port par défaut est 6006
-5. HuggingFace fonctionne parfaitement depuis GPUhub — les modèles se téléchargent vite
-6. Ne JAMAIS tenter Docker sur GPUhub
+### Option C: Claude Code (automated)
+If using Claude Code for deployment:
+1. Read this GPUHUB.md file in full before starting
+2. Always use Option B (SCP) — do not attempt git clone
+3. SSH commands MUST always start with `export PATH="/root/miniconda3/bin:$PATH"`
+4. Default port is 6006
+5. HuggingFace works fine from GPUhub — models download at ~15 MB/s
+6. NEVER attempt Docker on GPUhub
 
 ---
 
-## Après installation
+## After Installation
 
-### Tester
-Accéder à ComfyUI via le navigateur sur le port 6006 (ou tunnel SSH `ssh -L 6006:localhost:6006`).
+### Testing
+Access ComfyUI via browser on port 6006 (or SSH tunnel: `ssh -L 6006:localhost:6006`).
 
 ### Save Image
-Once everything works, save as custom image in the GPUhub console:
+Once everything works, save as a custom image in the GPUhub console:
 1. Stop the instance
 2. Click "More > Save Image"
 3. Wait ~1-2h (disk compression)
-4. Future instances use this image → only `start.sh` needed (model downloads)
+4. Future instances use this image — only `start.sh` needed (model downloads)
 
-**Important**: Only the system disk (`/`) is captured. Models on `autodl-fs` are persistent (survive shutdown/release) but not part of the image. The `start.sh` script downloads them on first launch, then they stay cached on your account forever.
+**Important**: Only the system disk (`/`) is captured in the image. Models on `autodl-fs` are persistent (survive shutdown/release) but not part of the image. The `start.sh` script downloads them on first launch, then they stay cached on your account forever.
 
-### Structure des fichiers
+### File Structure
 ```
 /opt/ComfyUI/                          ← system disk (captured in image)
 ├── main.py
@@ -177,7 +179,7 @@ Once everything works, save as custom image in the GPUhub console:
 │   ├── ComfyUI-MelBandRoFormer/
 │   ├── ComfyUI-VideoHelperSuite/
 │   ├── ComfyUI-KJNodes/
-│   └── ComfyUI_Fill-ChatterBox/  # + chatterbox_long_node.py patché
+│   └── ComfyUI_Fill-ChatterBox/       # + chatterbox_long_node.py patched
 └── user/default/workflows/
     ├── chatterbox-voice-clone.json
     ├── chatterbox-long-tts.json
