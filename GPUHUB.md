@@ -63,7 +63,7 @@ Les scripts `setup-gpuhub.sh` et `start.sh` le font automatiquement.
 ```bash
 export PATH="/root/miniconda3/bin:$PATH"
 curl -sL https://raw.githubusercontent.com/wuraaang/comfyui-skyreels-tts/master/setup-gpuhub.sh | bash
-cd /root/autodl-tmp/ComfyUI && bash start.sh
+cd /opt/ComfyUI && bash start.sh
 ```
 
 ### Option B : Fallback SCP (quand GitHub est bloqué)
@@ -101,39 +101,43 @@ sshpass -p 'PASSWORD' scp -P PORT /tmp/gpuhub-pack.tar.gz root@connect.singapore
 ```bash
 export PATH="/root/miniconda3/bin:$PATH"
 
-# 4. Décompresser
+# 4. Décompresser sur le DISQUE SYSTÈME (/opt, pas /root/autodl-tmp)
 cd /root/autodl-tmp
 tar xzf gpuhub-pack.tar.gz
-unzip -q ComfyUI.zip && mv ComfyUI-master ComfyUI
+unzip -q ComfyUI.zip && mv ComfyUI-master /opt/ComfyUI
 
-# 5. Custom nodes
-cd ComfyUI/custom_nodes
+# 5. Symlink models vers data disk
+mkdir -p /root/autodl-tmp/comfyui-models/{diffusion_models,text_encoders,vae,clip_vision}
+ln -sfn /root/autodl-tmp/comfyui-models /opt/ComfyUI/models
+
+# 6. Custom nodes
+cd /opt/ComfyUI/custom_nodes
 for z in /root/autodl-tmp/ComfyUI-*.zip /root/autodl-tmp/ComfyUI_*.zip; do
   unzip -q "$z"
   name=$(basename "${z%.zip}")
   mv "${name}-main" "$name" 2>/dev/null || mv "${name}-master" "$name" 2>/dev/null || true
 done
 
-# 6. Install deps
-cd /root/autodl-tmp/ComfyUI
-pip install -r requirements.txt
+# 7. Install deps
+cd /opt/ComfyUI
+pip install -r requirements.txt --timeout 300
 for node in custom_nodes/*/; do
-  [ -f "$node/requirements.txt" ] && pip install -r "$node/requirements.txt"
+  [ -f "$node/requirements.txt" ] && pip install -r "$node/requirements.txt" --timeout 300
 done
-pip install sageattention huggingface-hub hf_transfer
+pip install sageattention huggingface-hub hf_transfer --timeout 300
 
-# 7. Patch ChatterBox
+# 8. Patch ChatterBox
 cp /root/autodl-tmp/chatterbox_long_node.py custom_nodes/ComfyUI_Fill-ChatterBox/
 INIT=custom_nodes/ComfyUI_Fill-ChatterBox/__init__.py
 sed -i '/^NODE_CLASS_MAPPINGS = {}/i from .chatterbox_long_node import NODE_CLASS_MAPPINGS as LONG_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS as LONG_DISPLAY_NAME_MAPPINGS' "$INIT"
 sed -i '/NODE_DISPLAY_NAME_MAPPINGS.update(DIALOG_DISPLAY_NAME_MAPPINGS)/a NODE_CLASS_MAPPINGS.update(LONG_CLASS_MAPPINGS)\nNODE_DISPLAY_NAME_MAPPINGS.update(LONG_DISPLAY_NAME_MAPPINGS)' "$INIT"
 
-# 8. Workflows + start script
+# 9. Workflows + start script
 mkdir -p user/default/workflows
 cp /root/autodl-tmp/*.json user/default/workflows/
 cp /root/autodl-tmp/start.sh . && chmod +x start.sh
 
-# 9. Lancer
+# 10. Lancer
 bash start.sh
 ```
 
@@ -154,22 +158,20 @@ Si tu utilises Claude Code pour déployer :
 Accéder à ComfyUI via le navigateur sur le port 6006 (ou tunnel SSH `ssh -L 6006:localhost:6006`).
 
 ### Save Image
-Une fois que tout fonctionne, sauvegarder comme image custom dans l'interface GPUhub :
-1. Arrêter le pod
-2. Cliquer "Save Image" dans l'interface
-3. Attendre 1-2h (compression du disk)
-4. Les futurs pods peuvent utiliser cette image → plus besoin de setup
+Once everything works, save as custom image in the GPUhub console:
+1. Stop the instance
+2. Click "More > Save Image"
+3. Wait ~1-2h (disk compression)
+4. Future instances use this image → only `start.sh` needed (model downloads)
+
+**Important**: Only the system disk (`/`) is captured. Models in `/root/autodl-tmp/` are NOT saved — that's by design. The `start.sh` script re-downloads them each session (with skip-if-cached).
 
 ### Structure des fichiers
 ```
-/root/autodl-tmp/ComfyUI/
-├── main.py                    # ComfyUI entry point
-├── start.sh                   # Download models + start server
-├── models/                    # Auto-populated by start.sh
-│   ├── diffusion_models/      # SkyReels A2V (18GB) + MelBandRoFormer (436MB)
-│   ├── text_encoders/         # umt5-xxl (11GB)
-│   ├── vae/                   # Wan2_1_VAE (243MB)
-│   └── clip_vision/           # clip_vision_h (1.2GB)
+/opt/ComfyUI/                          ← system disk (captured in image)
+├── main.py
+├── start.sh
+├── models → /root/autodl-tmp/comfyui-models/  ← symlink to data disk
 ├── custom_nodes/
 │   ├── ComfyUI-WanVideoWrapper/
 │   ├── ComfyUI-MelBandRoFormer/
@@ -180,4 +182,10 @@ Une fois que tout fonctionne, sauvegarder comme image custom dans l'interface GP
     ├── chatterbox-voice-clone.json
     ├── chatterbox-long-tts.json
     └── skyreels-v3-talking-avatar.json
+
+/root/autodl-tmp/comfyui-models/       ← data disk (NOT in image, downloaded by start.sh)
+├── diffusion_models/                  # SkyReels A2V (18GB) + MelBandRoFormer (436MB)
+├── text_encoders/                     # umt5-xxl (11GB)
+├── vae/                               # Wan2_1_VAE (243MB)
+└── clip_vision/                       # clip_vision_h (1.2GB)
 ```
