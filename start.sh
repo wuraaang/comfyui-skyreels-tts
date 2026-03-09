@@ -20,6 +20,7 @@ set -e
 
 export PATH="/root/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export HF_HOME="/root/autodl-tmp/cache"
+export HF_HUB_ENABLE_HF_TRANSFER=1
 
 # --- Paths ---
 COMFY_DIR="/opt/ComfyUI"
@@ -55,7 +56,7 @@ else
   exit 1
 fi
 
-# Download helper: skip if cached, fallback to hf-mirror
+# Download helper: skip if cached, fallback chain: HF → hf-mirror → ModelScope
 download_hf() {
   local target="$1" label="$2" repo="$3" file="$4" dest_dir="$5"
   if [ -f "$target" ]; then
@@ -63,13 +64,43 @@ download_hf() {
     return 0
   fi
   echo "$label Downloading..."
+  # Try 1: HuggingFace direct (fast outside China with hf_transfer)
   if $HF_CLI download "$repo" "$file" --local-dir "$dest_dir" --quiet 2>/dev/null; then
+    # hf download preserves repo directory structure — move file to target if needed
+    if [ ! -f "$target" ]; then
+      local actual="$dest_dir/$file"
+      if [ -f "$actual" ]; then
+        mkdir -p "$(dirname "$target")"
+        mv "$actual" "$target"
+      fi
+    fi
     echo "$label Done."
-  else
-    echo "$label Retry via hf-mirror..."
-    HF_ENDPOINT=https://hf-mirror.com $HF_CLI download "$repo" "$file" --local-dir "$dest_dir" --quiet && \
-      echo "$label Done." || echo "$label FAILED!"
+    return 0
   fi
+  # Try 2: hf-mirror (works in China, but slow)
+  echo "$label Retry via hf-mirror..."
+  if HF_ENDPOINT=https://hf-mirror.com $HF_CLI download "$repo" "$file" --local-dir "$dest_dir" --quiet 2>/dev/null; then
+    if [ ! -f "$target" ]; then
+      local actual="$dest_dir/$file"
+      if [ -f "$actual" ]; then
+        mkdir -p "$(dirname "$target")"
+        mv "$actual" "$target"
+      fi
+    fi
+    echo "$label Done."
+    return 0
+  fi
+  # Try 3: ModelScope direct download (fast in China, ~200+ MB/s)
+  echo "$label Retry via ModelScope..."
+  local ms_url="https://modelscope.cn/models/${repo}/resolve/main/${file}"
+  mkdir -p "$(dirname "$target")"
+  if wget -q --show-progress -O "$target" "$ms_url" 2>&1; then
+    echo "$label Done (ModelScope)."
+    return 0
+  fi
+  echo "$label FAILED! (all sources tried)"
+  rm -f "$target"
+  return 1
 }
 
 # Check if ALL models are already cached
